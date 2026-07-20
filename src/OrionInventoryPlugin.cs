@@ -1,5 +1,4 @@
 using Orion;
-using Orion.Entity.Traits;
 using Orion.Gameplay;
 using Orion.PluginContracts;
 using Orion.PluginContracts.Network;
@@ -18,8 +17,9 @@ public sealed class OrionInventoryPlugin : IOrionPlugin
 
     public void Load(IPluginLoadContext context)
     {
-        _ = context;
-        EntityTraitRegistry.RegisterFromAssembly(typeof(OrionInventoryPlugin).Assembly);
+        var assembly = typeof(OrionInventoryPlugin).Assembly;
+        context.Registries.EntityTraits.RegisterFromAssembly(assembly, Id);
+        context.Registries.PlayerTraits.RegisterFromAssembly(assembly, Id);
     }
 
     public void OnEnable(IPluginContext context)

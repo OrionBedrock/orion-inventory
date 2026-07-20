@@ -10,7 +10,7 @@ using Orion.Protocol.Enums;
 using Orion.Protocol.Nbt;
 using Orion.Protocol.Packets;
 using Orion.Protocol.Types;
-using Orion.Traits;
+using Orion.Api.Traits;
 using Entity = Orion.Entity.Entity;
 using Player = Orion.Player.Player;
 

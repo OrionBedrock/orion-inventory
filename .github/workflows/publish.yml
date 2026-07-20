@@ -54,6 +54,8 @@ jobs:
           -p:PluginsSiblingRoot=$GITHUB_WORKSPACE
 
   publish:
+    # Trusted Publishing + NUGET_USER exist only on OrionBedrock (not forks).
+    if: github.repository_owner == 'OrionBedrock'
     needs: build
     runs-on: ubuntu-latest
     defaults:

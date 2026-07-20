@@ -1,5 +1,5 @@
 <Project>
-  <!-- Standalone clone: build artifacts outside the orion:* folder (colon breaks MSBuild on Linux). -->
+  <!-- Colon-safe obj/bin + configurable monorepo roots for local/CI. -->
   <PropertyGroup>
     <_PluginBuildRoot>$(HOME)/.cache/orion-plugin-build/$(MSBuildProjectName)/</_PluginBuildRoot>
     <BaseIntermediateOutputPath>$(_PluginBuildRoot)obj/</BaseIntermediateOutputPath>
@@ -8,5 +8,7 @@
     <BaseOutputPath>$(_PluginBuildRoot)bin/</BaseOutputPath>
     <OutputPath>$(BaseOutputPath)</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OrionServerBERoot Condition="'$(OrionServerBERoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../OrionServerBE'))</OrionServerBERoot>
+    <PluginsSiblingRoot Condition="'$(PluginsSiblingRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</PluginsSiblingRoot>
   </PropertyGroup>
 </Project>

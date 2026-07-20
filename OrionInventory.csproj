@@ -9,23 +9,39 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>$(MSBuildThisFileDirectory)bin\</OutputPath>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <Version>0.1.0</Version>
+    <PackageId>Orion.Plugins.Inventory</PackageId>
+    <Authors>OrionBedrock</Authors>
+    <Company>OrionBedrock</Company>
+    <Description>Orion Bedrock first-party plugin: orion:inventory</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/OrionBedrock/orion-inventory</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/OrionBedrock/orion-inventory</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>orion;minecraft;bedrock;plugin</PackageTags>
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\OrionServerBE\src\PluginContracts\PluginContracts.csproj">
+    <ProjectReference Include="$(OrionServerBERoot)/src/PluginContracts/PluginContracts.csproj">
       <Private>false</Private>
+      <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <ProjectReference Include="..\..\OrionServerBE\src\Orion\Orion.csproj">
+    <ProjectReference Include="$(OrionServerBERoot)/src/Orion/Orion.csproj">
       <Private>false</Private>
+      <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <ProjectReference Include="..\orion:containers\OrionContainers.csproj">
+    <ProjectReference Include="$(PluginsSiblingRoot)/orion:containers/OrionContainers.csproj">
       <Private>false</Private>
+      <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
     <None Update="plugin.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>content/plugins/orion.inventory/</PackagePath>
     </None>
   </ItemGroup>
 

@@ -1,0 +1,15 @@
+{
+  "id": "orion:inventory",
+  "version": "1.0.0",
+  "api": "0.1.0",
+  "description": "Player inventory, cursor, ItemStackRequest, and public inventory services.",
+  "authors": ["Orion"],
+  "main": "OrionInventory.OrionInventoryPlugin",
+  "depend": [
+    { "id": "orion:containers", "versions": ["1.0.0", "99.0.0"] }
+  ],
+  "softdepend": [
+    { "id": "orion:attributes", "load": "before", "versions": ["1.0.0", "99.0.0"] }
+  ],
+  "provides": ["orion:inventory"]
+}

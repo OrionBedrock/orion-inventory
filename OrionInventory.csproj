@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OrionInventory</RootNamespace>
+    <AssemblyName>orion.inventory</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>$(MSBuildThisFileDirectory)bin\</OutputPath>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\OrionServerBE\src\PluginContracts\PluginContracts.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\..\OrionServerBE\src\Orion\Orion.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\orion:containers\OrionContainers.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="CopyPluginBesideManifest" AfterTargets="Build">
+    <ItemGroup>
+      <_PluginOutputs Include="$(TargetPath)" />
+      <_PluginOutputs Include="$(TargetDir)$(TargetName).pdb"
+                      Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+      <_PluginOutputs Include="$(TargetDir)$(TargetName).deps.json"
+                      Condition="Exists('$(TargetDir)$(TargetName).deps.json')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PluginOutputs)"
+          DestinationFolder="$(MSBuildThisFileDirectory)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

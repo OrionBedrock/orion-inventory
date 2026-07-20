@@ -1,0 +1,12 @@
+<Project>
+  <!-- Standalone clone: build artifacts outside the orion:* folder (colon breaks MSBuild on Linux). -->
+  <PropertyGroup>
+    <_PluginBuildRoot>$(HOME)/.cache/orion-plugin-build/$(MSBuildProjectName)/</_PluginBuildRoot>
+    <BaseIntermediateOutputPath>$(_PluginBuildRoot)obj/</BaseIntermediateOutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)/</IntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>$(_PluginBuildRoot)bin/</BaseOutputPath>
+    <OutputPath>$(BaseOutputPath)</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+</Project>

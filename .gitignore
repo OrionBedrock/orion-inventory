@@ -1,0 +1,6 @@
+bin/
+.msbuild/
+*.dll
+*.pdb
+*.deps.json
+obj/

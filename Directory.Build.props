@@ -8,6 +8,9 @@
     <BaseOutputPath>$(_PluginBuildRoot)bin/</BaseOutputPath>
     <OutputPath>$(BaseOutputPath)</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- The shared Roslyn build server (VBCSCompiler) crashes on the colon in the folder
+         path and exits csc with code 1 and no diagnostics; compile in-process instead. -->
+    <UseSharedCompilation>false</UseSharedCompilation>
     <OrionServerBERoot Condition="'$(OrionServerBERoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../OrionServerBE'))</OrionServerBERoot>
     <PluginsSiblingRoot Condition="'$(PluginsSiblingRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</PluginsSiblingRoot>
   </PropertyGroup>

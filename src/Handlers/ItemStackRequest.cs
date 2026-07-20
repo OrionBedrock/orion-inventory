@@ -1,29 +1,25 @@
 namespace OrionInventory.Handlers;
 
-using Orion;
+using Orion.Api;
+using Orion.Api.Items;
+using Orion.Api.Network;
 using Orion.Containers;
-using Orion.Item;
-using Orion.Network;
-using Orion.Network.Handlers;
 using Orion.Protocol.Enums;
+using Orion.Protocol.Io;
 using Orion.Protocol.Packets;
 using Orion.Protocol.Types;
-using Orion.RakNet;
 using OrionInventory;
+using ApiContainer = Orion.Api.Containers.IContainer;
 using ProtoItemStackRequest = Orion.Protocol.Types.ItemStackRequest;
-using Orion.Protocol.Io;
-using BinaryReader = Basalt.Binary.BinaryReader;
 
 public static class ItemStackRequestHandler
 {
-    public static void Handle(Server server, NetworkConnection connection, ReadOnlySpan<byte> packetBuffer)
+    public static void Handle(IPlayer player, ReadOnlySpan<byte> packetBuffer)
     {
-        int offset = 0;
-        Basalt.Binary.BinaryReader reader = new(packetBuffer, ref offset);
         ItemStackRequestPacket packet;
         try
         {
-            packet = (ItemStackRequestPacket)Packet.Deserialize(reader);
+            packet = (ItemStackRequestPacket)PacketCodec.DeserializeFromBytes(packetBuffer);
         }
         catch (Exception exception)
         {
@@ -31,8 +27,7 @@ public static class ItemStackRequestHandler
             throw;
         }
 
-        if (!SessionLookup.TryGetPlayer(server, connection, out global::Orion.Player.Player? player) ||
-            packet.Requests.Count == 0)
+        if (packet.Requests.Count == 0)
         {
             return;
         }
@@ -67,30 +62,19 @@ public static class ItemStackRequestHandler
         CreativeInventoryLog.LogItemStackResponse(player.Username, responses.Count, responses);
 
         ItemStackResponsePacket responsePacket = new() { Responses = responses };
-        if (player.Session is not null)
-        {
-            player.Session.Send(responsePacket);
-        }
-        else
-        {
-            server.Network.SendPacket(connection, responsePacket);
-        }
+        player.Send(new OpaqueOutboundPacket(responsePacket));
     }
 
     [ThreadStatic]
     private static int _pendingCreativeStackId;
 
     [ThreadStatic]
-    private static ItemStack? _pendingCreativeItem;
+    private static IItemStack? _pendingCreativeItem;
 
-    public static ItemStackResponse Process(
-        global::Orion.Player.Player player,
-        ProtoItemStackRequest request) =>
+    public static ItemStackResponse Process(IPlayer player, ProtoItemStackRequest request) =>
         ProcessRequest(player, request);
 
-    private static ItemStackResponse ProcessRequest(
-        global::Orion.Player.Player player,
-        ProtoItemStackRequest request)
+    private static ItemStackResponse ProcessRequest(IPlayer player, ProtoItemStackRequest request)
     {
         Dictionary<string, StackResponseContainerInfo> changed = [];
         _pendingCreativeStackId = 0;
@@ -127,7 +111,7 @@ public static class ItemStackRequestHandler
     }
 
     private static ItemStackResponseStatus HandleAction(
-        global::Orion.Player.Player player,
+        IPlayer player,
         IStackRequestAction action,
         Dictionary<string, StackResponseContainerInfo> changed)
     {
@@ -145,7 +129,7 @@ public static class ItemStackRequestHandler
     }
 
     private static ItemStackResponseStatus HandleTransfer(
-        global::Orion.Player.Player player,
+        IPlayer player,
         TransferStackRequestAction action,
         Dictionary<string, StackResponseContainerInfo> changed)
     {
@@ -161,7 +145,7 @@ public static class ItemStackRequestHandler
                 return ItemStackResponseStatus.InvalidSourceContainer;
             }
 
-            ItemStack item = _pendingCreativeItem;
+            IItemStack item = _pendingCreativeItem;
             _pendingCreativeItem = null;
             creativeDestination.SetItem(creativeSlot, item);
             RecordChange(
@@ -179,7 +163,7 @@ public static class ItemStackRequestHandler
             return ItemStackResponseStatus.InvalidSourceContainer;
         }
 
-        ItemStack? sourceItem = sourceContainer.GetItem(sourceSlot);
+        IItemStack? sourceItem = sourceContainer.GetItem(sourceSlot);
         if (sourceItem is null && action.Source.StackNetworkId != 0 &&
             TryFindSlotByStackNetworkId(sourceContainer, action.Source.StackNetworkId, out int correctedSlot))
         {
@@ -192,7 +176,7 @@ public static class ItemStackRequestHandler
             return ItemStackResponseStatus.FailedToMatchExpectedSlotConsumedItem;
         }
 
-        int amount = Math.Clamp((int)action.Count, 1, sourceItem.StackSize);
+        int amount = Math.Clamp((int)action.Count, 1, sourceItem.Count);
         if (action.Destination.StackNetworkId == 0)
         {
             int resolved = ResolveDestinationSlot(destinationContainer, sourceItem, destinationSlot);
@@ -202,11 +186,11 @@ public static class ItemStackRequestHandler
             }
         }
 
-        ItemStack? destinationItem = destinationContainer.GetItem(destinationSlot);
+        IItemStack? destinationItem = destinationContainer.GetItem(destinationSlot);
         if (destinationItem is null)
         {
-            ItemStack? taken = sourceContainer.TakeItem(sourceSlot, amount);
-            if (taken is null || taken.StackSize == 0)
+            IItemStack? taken = sourceContainer.TakeItem(sourceSlot, amount);
+            if (taken is null || taken.Count == 0)
             {
                 return ItemStackResponseStatus.CannotRemoveItem;
             }
@@ -220,16 +204,16 @@ public static class ItemStackRequestHandler
                 return ItemStackResponseStatus.CannotPlaceItem;
             }
 
-            int available = destinationItem.Type.MaxStackSize - destinationItem.StackSize;
+            int available = destinationItem.Type.MaxStackSize - destinationItem.Count;
             if (available <= 0)
             {
                 return ItemStackResponseStatus.CannotPlaceItem;
             }
 
             amount = Math.Min(amount, available);
-            sourceItem.DecrementStack((ushort)amount);
-            destinationItem.IncrementStack((ushort)amount);
-            if (sourceItem.StackSize == 0)
+            sourceItem.Decrement(amount);
+            destinationItem.Increment(amount);
+            if (sourceItem.Count == 0)
             {
                 sourceContainer.ClearSlot(sourceSlot);
             }
@@ -252,7 +236,7 @@ public static class ItemStackRequestHandler
     }
 
     private static ItemStackResponseStatus HandleSwap(
-        global::Orion.Player.Player player,
+        IPlayer player,
         SwapStackRequestAction action,
         Dictionary<string, StackResponseContainerInfo> changed)
     {
@@ -274,7 +258,7 @@ public static class ItemStackRequestHandler
     }
 
     private static ItemStackResponseStatus HandleDrop(
-        global::Orion.Player.Player player,
+        IPlayer player,
         DropStackRequestAction action,
         Dictionary<string, StackResponseContainerInfo> changed)
     {
@@ -283,7 +267,7 @@ public static class ItemStackRequestHandler
             return ItemStackResponseStatus.InvalidSourceContainer;
         }
 
-        ItemStack? removed = container.TakeItem(slot, Math.Max(1, (int)action.Count));
+        IItemStack? removed = container.TakeItem(slot, Math.Max(1, (int)action.Count));
         if (removed is null)
         {
             return ItemStackResponseStatus.CannotDropItem;
@@ -295,7 +279,7 @@ public static class ItemStackRequestHandler
     }
 
     private static ItemStackResponseStatus HandleDestroy(
-        global::Orion.Player.Player player,
+        IPlayer player,
         DestroyStackRequestAction action,
         Dictionary<string, StackResponseContainerInfo> changed)
     {
@@ -304,7 +288,7 @@ public static class ItemStackRequestHandler
             return ItemStackResponseStatus.InvalidSourceContainer;
         }
 
-        ItemStack? removed = container.TakeItem(slot, Math.Max(1, (int)action.Count));
+        IItemStack? removed = container.TakeItem(slot, Math.Max(1, (int)action.Count));
         if (removed is null)
         {
             return ItemStackResponseStatus.CannotDestroyItem;
@@ -315,15 +299,15 @@ public static class ItemStackRequestHandler
     }
 
     private static ItemStackResponseStatus HandleCraftCreative(
-        global::Orion.Player.Player player,
+        IPlayer player,
         CraftCreativeStackRequestAction action)
     {
-        if (player.Gamemode != Gamemode.Creative)
+        if (player.Gamemode != Orion.Api.Gamemode.Creative)
         {
             return ItemStackResponseStatus.PlayerNotInCreativeMode;
         }
 
-        ItemStack? item = ItemRegistry.GetCreativeItem(action.CreativeItemNetworkId);
+        IItemStack? item = Items.TryCreateCreative((uint)action.CreativeItemNetworkId);
         if (item is null)
         {
             CreativeInventoryLog.LogItemStackAction(
@@ -346,7 +330,7 @@ public static class ItemStackRequestHandler
         containerId is (byte)ContainerName.CreativeOutput or (byte)ContainerId.CreatedOutput;
 
     private static bool TryResolveSlot(
-        global::Orion.Player.Player player,
+        IPlayer player,
         StackRequestSlotInfo requestSlot,
         out Container container,
         out int slot)
@@ -371,10 +355,7 @@ public static class ItemStackRequestHandler
         return true;
     }
 
-    private static Container? ResolveContainer(
-        global::Orion.Player.Player player,
-        FullContainerName name,
-        int slot)
+    private static Container? ResolveContainer(IPlayer player, FullContainerName name, int slot)
     {
         if (TryGetOpenedDynamicContainer(player, name, out Container openedContainer))
         {
@@ -388,7 +369,7 @@ public static class ItemStackRequestHandler
             return null;
         }
 
-        return player.GetContainer(name) as Container;
+        return InventoryResolver.Resolve(player, name);
     }
 
     private static int ResolveSlotIndex(FullContainerName containerName, Container container, int slot)
@@ -430,13 +411,13 @@ public static class ItemStackRequestHandler
     private static int NormalizeInventorySlot(int slot) =>
         slot is >= 36 and <= 44 ? slot - 36 : slot;
 
-    private static int ResolveDestinationSlot(Container container, ItemStack sourceItem, int preferredSlot)
+    private static int ResolveDestinationSlot(Container container, IItemStack sourceItem, int preferredSlot)
     {
         if (preferredSlot >= 0 && preferredSlot < container.GetSize())
         {
-            ItemStack? preferred = container.GetItem(preferredSlot);
+            IItemStack? preferred = container.GetItem(preferredSlot);
             if (preferred is null ||
-                preferred.CanStackWith(sourceItem) && preferred.StackSize < preferred.Type.MaxStackSize)
+                preferred.CanStackWith(sourceItem) && preferred.Count < preferred.Type.MaxStackSize)
             {
                 return preferredSlot;
             }
@@ -444,8 +425,8 @@ public static class ItemStackRequestHandler
 
         for (int i = 0; i < container.GetSize(); i++)
         {
-            ItemStack? item = container.GetItem(i);
-            if (item is not null && item.CanStackWith(sourceItem) && item.StackSize < item.Type.MaxStackSize)
+            IItemStack? item = container.GetItem(i);
+            if (item is not null && item.CanStackWith(sourceItem) && item.Count < item.Type.MaxStackSize)
             {
                 return i;
             }
@@ -463,7 +444,7 @@ public static class ItemStackRequestHandler
     }
 
     private static bool TryGetOpenedDynamicContainer(
-        global::Orion.Player.Player player,
+        IPlayer player,
         FullContainerName name,
         out Container container)
     {
@@ -475,7 +456,7 @@ public static class ItemStackRequestHandler
 
         if (name.DynamicContainerId.HasValue)
         {
-            if (!player.TryGetOpenContainer((int)name.DynamicContainerId.Value, out IContainer? opened) ||
+            if (!player.TryGetOpenContainer((int)name.DynamicContainerId.Value, out ApiContainer? opened) ||
                 opened is not Container concrete || concrete.Type == ContainerType.Inventory)
             {
                 return false;
@@ -486,7 +467,7 @@ public static class ItemStackRequestHandler
         }
 
         Container? single = null;
-        foreach ((_, IContainer opened) in player.openedContainers)
+        foreach ((_, ApiContainer opened) in player.OpenedContainers)
         {
             if (opened is not Container concrete || concrete.Type == ContainerType.Inventory)
             {
@@ -559,13 +540,13 @@ public static class ItemStackRequestHandler
             changed[key] = info;
         }
 
-        ItemStack? item = container.GetItem(storageSlot);
+        IItemStack? item = container.GetItem(storageSlot);
         info.SlotInfo.RemoveAll(existing => existing.Slot == responseSlot);
         info.SlotInfo.Add(new StackResponseSlotInfo
         {
             Slot = (byte)responseSlot,
             HotbarSlot = (byte)responseSlot,
-            Count = (byte)(item?.StackSize ?? 0),
+            Count = (byte)(item?.Count ?? 0),
             StackNetworkId = item?.NetworkStackId ?? 0,
             CustomName = string.Empty,
             FilteredCustomName = string.Empty,
@@ -585,9 +566,9 @@ public static class ItemStackRequestHandler
         };
     }
 
-    private static void ResyncContainers(global::Orion.Player.Player player)
+    private static void ResyncContainers(IPlayer player)
     {
-        foreach (Container container in player.openedContainers.Values.Distinct())
+        foreach (ApiContainer container in player.OpenedContainers.Values.Distinct())
         {
             container.Update();
         }
@@ -613,4 +594,25 @@ public static class ItemStackRequestHandler
     private static string Slot(StackRequestSlotInfo slot) =>
         $"[cid: {slot.Container.ContainerId}, dyn: {slot.Container.DynamicContainerId?.ToString() ?? "_"}, " +
         $"slot: {slot.Slot}, nid: {slot.StackNetworkId}]";
+}
+
+/// <summary>
+/// Lightweight, plugin-local diagnostics shim (host <c>CreativeInventoryLog</c> lives in Orion.dll).
+/// Kept as no-ops to preserve call sites without a host reference.
+/// </summary>
+internal static class CreativeInventoryLog
+{
+    public static void LogItemStackAction(string user, string kind, string detail)
+    {
+        _ = user;
+        _ = kind;
+        _ = detail;
+    }
+
+    public static void LogItemStackResponse(string user, int count, List<ItemStackResponse> responses)
+    {
+        _ = user;
+        _ = count;
+        _ = responses;
+    }
 }

@@ -31,7 +31,15 @@
       <Private>false</Private>
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <ProjectReference Include="$(OrionServerBERoot)/src/Orion/Orion.csproj">
+    <ProjectReference Include="$(OrionServerBERoot)/src/Orion.Api/Orion.Api.csproj">
+      <Private>false</Private>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="$(OrionServerBERoot)/src/Protocol/Protocol.csproj">
+      <Private>false</Private>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="$(OrionServerBERoot)/src/Binary/Binary.csproj">
       <Private>false</Private>
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>

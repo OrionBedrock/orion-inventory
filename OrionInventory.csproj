@@ -23,16 +23,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Orion.PluginContracts" Version="0.1.0">
+    <PackageReference Include="Orion.PluginContracts" Version="0.1.*">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Orion.Gameplay.Api" Version="0.1.0">
+    <PackageReference Include="Orion.Gameplay.Api" Version="0.1.*">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Orion.Api" Version="0.1.0">
+    <PackageReference Include="Orion.Api" Version="0.1.*">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Orion.Protocol" Version="0.1.0">
+    <PackageReference Include="Orion.Protocol" Version="0.1.*">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <ProjectReference Include="$(PluginsSiblingRoot)/orion:containers/OrionContainers.csproj">

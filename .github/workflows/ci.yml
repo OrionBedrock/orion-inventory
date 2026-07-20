@@ -18,14 +18,7 @@ jobs:
         with:
           path: plugin
 
-      - name: Checkout OrionServerBE
-        uses: actions/checkout@v4
-        with:
-          repository: OrionBedrock/OrionServerBE
-          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
-          path: OrionServerBE
-
-      - name: Checkout orion:containers
+      - name: Checkout orion-containers (sibling)
         uses: actions/checkout@v4
         with:
           repository: OrionBedrock/orion-containers
@@ -38,7 +31,6 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Build
-        run: >
-          dotnet build OrionInventory.csproj -c Release
-          -p:OrionServerBERoot=$GITHUB_WORKSPACE/OrionServerBE
-          -p:PluginsSiblingRoot=$GITHUB_WORKSPACE
+        env:
+          PluginsSiblingRoot: ${{ github.workspace }}
+        run: dotnet build OrionInventory.csproj -c Release

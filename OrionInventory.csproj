@@ -27,6 +27,10 @@
       <Private>false</Private>
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
+    <ProjectReference Include="$(OrionServerBERoot)/src/Orion.Gameplay.Api/Orion.Gameplay.Api.csproj">
+      <Private>false</Private>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
     <ProjectReference Include="$(OrionServerBERoot)/src/Orion/Orion.csproj">
       <Private>false</Private>
       <PrivateAssets>all</PrivateAssets>

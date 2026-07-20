@@ -1,14 +1,19 @@
 name: Publish NuGet
 
-# Merge into main → build, then pack/push.
-# Bump <Version> in the csproj before merging to release a new package.
+# Auto-publish when plugin sources change on main.
+# Version: optional override (must be > latest on nuget.org), else patch +0.0.1.
 on:
   push:
     branches: [main]
+    paths:
+      - "**/*.cs"
+      - "**/*.csproj"
+      - "plugin.json"
+      - "Directory.Build.props"
   workflow_dispatch:
     inputs:
       version:
-        description: "Package version override (optional)"
+        description: "Version override (must be greater than latest on nuget.org)"
         required: false
         default: ""
 
@@ -35,12 +40,12 @@ jobs:
           ref: main
           path: OrionServerBE
 
-      - name: Checkout orion:containers
-        uses: actions/checkout@v4
-        with:
-          repository: OrionBedrock/orion-containers
-          ref: main
-          path: orion:containers
+- name: Checkout orion:containers
+  uses: actions/checkout@v4
+  with:
+    repository: OrionBedrock/orion-containers
+    ref: main
+    path: orion:containers
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -74,12 +79,12 @@ jobs:
           ref: main
           path: OrionServerBE
 
-      - name: Checkout orion:containers
-        uses: actions/checkout@v4
-        with:
-          repository: OrionBedrock/orion-containers
-          ref: main
-          path: orion:containers
+- name: Checkout orion:containers
+  uses: actions/checkout@v4
+  with:
+    repository: OrionBedrock/orion-containers
+    ref: main
+    path: orion:containers
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -88,13 +93,48 @@ jobs:
 
       - name: Resolve version
         id: ver
+        env:
+          PACKAGE_ID: Orion.Plugins.Inventory
+          VERSION_OVERRIDE: ${{ github.event.inputs.version }}
+          CSPROJ: OrionInventory.csproj
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            VER=$(grep -oP '(?<=<Version>)[^<]+' OrionInventory.csproj | head -1)
-            echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          ID_LOWER=$(echo "$PACKAGE_ID" | tr '[:upper:]' '[:lower:]')
+          CURRENT=""
+          if INDEX=$(curl -fsSL "https://api.nuget.org/v3-flatcontainer/${ID_LOWER}/index.json" 2>/dev/null); then
+            CURRENT=$(echo "$INDEX" | jq -r '.versions[-1] // empty')
           fi
+          echo "Latest on nuget.org: ${CURRENT:-<none>}"
+
+          bump_patch() {
+            local v="$1"
+            local major minor patch
+            IFS=. read -r major minor patch <<< "$v"
+            patch=${patch%%-*}
+            echo "${major}.${minor}.$((patch + 1))"
+          }
+
+          version_gt() {
+            [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | tail -1)" = "$1" ] && [ "$1" != "$2" ]
+          }
+
+          if [ -n "${VERSION_OVERRIDE}" ]; then
+            if [ -n "$CURRENT" ] && ! version_gt "$VERSION_OVERRIDE" "$CURRENT"; then
+              echo "::error::Override '${VERSION_OVERRIDE}' must be greater than latest '${CURRENT}'"
+              exit 1
+            fi
+            VER="$VERSION_OVERRIDE"
+            echo "Using override version: $VER"
+          elif [ -z "$CURRENT" ]; then
+            VER=$(grep -oP '(?<=<Version>)[^<]+' "$CSPROJ" | head -1)
+            echo "No nuget.org version; using csproj: $VER"
+          else
+            VER=$(bump_patch "$CURRENT")
+            echo "Auto-bump patch: $CURRENT -> $VER"
+          fi
+
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Resolved package version: $VER"
 
       - name: Pack
         run: |

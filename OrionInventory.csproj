@@ -23,14 +23,23 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(OrionServerBERoot)/src/PluginContracts/PluginContracts.csproj">
-      <Private>false</Private>
+    <Compile Remove="tests/**" />
+    <None Remove="tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Orion.PluginContracts" Version="0.1.2">
       <PrivateAssets>all</PrivateAssets>
-    </ProjectReference>
-    <ProjectReference Include="$(OrionServerBERoot)/src/Orion/Orion.csproj">
-      <Private>false</Private>
+    </PackageReference>
+    <PackageReference Include="Orion.Gameplay.Api" Version="0.1.2">
       <PrivateAssets>all</PrivateAssets>
-    </ProjectReference>
+    </PackageReference>
+    <PackageReference Include="Orion.Api" Version="0.1.2">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Orion.Protocol" Version="0.1.2">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <ProjectReference Include="$(PluginsSiblingRoot)/orion:containers/OrionContainers.csproj">
       <Private>false</Private>
       <PrivateAssets>all</PrivateAssets>

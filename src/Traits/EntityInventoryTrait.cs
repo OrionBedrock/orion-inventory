@@ -1,32 +1,34 @@
 namespace OrionInventory;
 
+using Orion.Api;
+using Orion.Api.Items;
+using Orion.Api.Network;
+using Orion.Api.Traits;
 using Orion.Containers;
 using OrionContainers;
-using Orion.Entity.Traits;
-using Orion.Entity.Traits.Enums;
-using Orion.Entity.Traits.Types;
-using Orion.Item;
 using Orion.Protocol.Enums;
 using Orion.Protocol.Nbt;
 using Orion.Protocol.Packets;
 using Orion.Protocol.Types;
-using Orion.Traits;
-using Entity = Orion.Entity.Entity;
-using Player = Orion.Player.Player;
 
-
-public sealed class EntityInventoryTrait : EntityTrait
+/// <summary>
+/// Entity inventory storage. Runs on players (36 slots) and containers (27 slots).
+/// Api-only: subclasses <see cref="EntityTraitBase"/> and never touches Orion.dll.
+/// </summary>
+public sealed class EntityInventoryTrait : EntityTraitBase
 {
     public new static string Identifier => "inventory";
-    public new static readonly EntityIdentifier[] Types = [EntityIdentifier.Player];
-    public new static readonly string[] Components = ["minecraft:inventory"];
+    public static readonly string[] Types = ["minecraft:player"];
+    public static readonly string[] Components = ["minecraft:inventory"];
 
+    public IEntity Entity { get; }
     public EntityContainer Container { get; }
     public int SelectedSlot { get; private set; }
     public bool Opened { get; private set; }
 
-    public EntityInventoryTrait(Entity entity) : base(entity)
+    public EntityInventoryTrait(IEntity entity)
     {
+        Entity = entity ?? throw new ArgumentNullException(nameof(entity));
         bool playerInventory = entity.IsPlayer();
 
         Container = new EntityContainer(
@@ -38,10 +40,7 @@ public sealed class EntityInventoryTrait : EntityTrait
         };
     }
 
-    public ItemStack? GetHeldItem()
-    {
-        return Container.GetItem(SelectedSlot);
-    }
+    public IItemStack? GetHeldItem() => Container.GetItem(SelectedSlot);
 
     public void SetHeldItem(int slot)
     {
@@ -55,7 +54,7 @@ public sealed class EntityInventoryTrait : EntityTrait
     {
         Container.Clear();
 
-        if (Entity is not Player player || !player.Spawned)
+        if (Entity is not IPlayer player || !player.Spawned)
         {
             return;
         }
@@ -68,7 +67,7 @@ public sealed class EntityInventoryTrait : EntityTrait
             StorageItem = new NetworkItemStackDescriptor()
         };
 
-        player.Send(packet);
+        player.Send(new OpaqueOutboundPacket(packet));
     }
 
     public override void OnTick(TraitOnTickDetails details)
@@ -83,36 +82,16 @@ public sealed class EntityInventoryTrait : EntityTrait
         Opened = hasViewers;
     }
 
-    public override void OnAdd()
+    public void OnSpawn()
     {
-        Entity.Metadata.SetActorMetadata(ActorDataId.ContainerType, ActorDataType.Byte, (sbyte)Container.Type);
-        Entity.Metadata.SetActorMetadata(ActorDataId.ContainerSize, ActorDataType.Int, Container.GetSize());
-    }
-
-    public override void OnSpawn(EntitySpawnOptions details)
-    {
-        if (Entity is Player player)
+        if (Entity is IPlayer player)
         {
             Container.Show(player);
             Container.Update();
         }
     }
 
-    public override void OnRemove()
-    {
-        Entity.Metadata.SetActorMetadata(ActorDataId.ContainerType, ActorDataType.Byte, (sbyte)ContainerType.None);
-        Entity.Metadata.SetActorMetadata(ActorDataId.ContainerSize, ActorDataType.Int, 0);
-    }
-
-    public override void OnInteract(Player player, EntityInteractMethod method)
-    {
-        if (method == EntityInteractMethod.Interact && !Entity.IsPlayer())
-        {
-            Container.Show(player);
-        }
-    }
-
-    public override void OnRead(CompoundTag tag)
+    public void OnRead(CompoundTag tag)
     {
         SelectedSlot = Math.Clamp(
             tag.Get<IntTag>("selected_slot")?.Value ?? SelectedSlot,
@@ -128,109 +107,13 @@ public sealed class EntityInventoryTrait : EntityTrait
         Container.Deserialize(containerTag);
     }
 
-    public override void OnWrite(CompoundTag tag)
+    public void OnWrite(CompoundTag tag)
     {
         tag.Set("selected_slot", new IntTag { Value = SelectedSlot });
         tag.Set("container", Container.Serialize());
     }
 
-    public override void OnRead(CompoundTag entityTag, CompoundTag traitTag)
-    {
-        OnRead(traitTag);
-
-        SelectedSlot = Math.Clamp(
-            entityTag.Get<IntTag>("SelectedInventorySlot")?.Value ?? SelectedSlot,
-            0,
-            Container.GetSize() - 1);
-
-        ListTag? oldInventory = entityTag.Get<ListTag>("Inventory");
-        if (oldInventory is null)
-        {
-            return;
-        }
-
-        CompoundTag containerTag = new();
-        containerTag.Set("size", new IntTag { Value = Container.GetSize() });
-
-        ListTag items = new() { Name = "items" };
-
-        foreach (BaseTag tag in oldInventory.Values)
-        {
-            if (tag is not CompoundTag itemTag)
-            {
-                continue;
-            }
-
-            int slot = itemTag.Get<IntTag>("Slot")?.Value ?? -1;
-
-            if (slot < 0 || slot >= Container.GetSize())
-            {
-                continue;
-            }
-
-            StringTag? id = itemTag.Get<StringTag>("Name");
-            if (id is null)
-            {
-                continue;
-            }
-
-            CompoundTag item = new();
-
-            item.Set("slot", new IntTag { Value = slot });
-            item.Set("id", new StringTag { Value = id.Value });
-            item.Set("count", new IntTag { Value = itemTag.Get<IntTag>("Count")?.Value ?? 1 });
-            item.Set("meta", new IntTag { Value = itemTag.Get<IntTag>("Damage")?.Value ?? 0 });
-
-            CompoundTag? nbt = itemTag.Get<CompoundTag>("tag");
-            if (nbt is not null)
-            {
-                item.Set("nbt", nbt);
-            }
-
-            items.Values.Add(item);
-        }
-
-        containerTag.Set("items", items);
-
-        Container.Deserialize(containerTag);
-    }
-
-    public override void OnWrite(CompoundTag entityTag, CompoundTag traitTag)
-    {
-        OnWrite(traitTag);
-
-        ListTag inventory = new() { Name = "Inventory" };
-
-        for (int slot = 0; slot < Container.GetSize(); slot++)
-        {
-            ItemStack? item = Container.GetItem(slot);
-
-            if (item is null || item.StackSize == 0)
-            {
-                continue;
-            }
-
-            CompoundTag entry = new();
-
-            entry.Set("Slot", new IntTag { Value = slot });
-            entry.Set("Name", new StringTag { Value = item.Identifier });
-            entry.Set("Count", new IntTag { Value = item.StackSize });
-            entry.Set("Damage", new IntTag { Value = unchecked((int)item.Metadata) });
-
-            CompoundTag? nbt = item.GetSerializedNbt();
-            if (nbt is not null)
-            {
-                entry.Set("tag", nbt);
-            }
-
-            inventory.Values.Add(entry);
-        }
-
-        entityTag.Set("Inventory", inventory);
-        entityTag.Set("SelectedInventorySlot", new IntTag { Value = SelectedSlot });
-    }
-
-    public override EntityTrait Clone(Entity entity)
+    public EntityInventoryTrait Clone(IEntity entity)
     {
         EntityInventoryTrait clone = new(entity)
         {
@@ -239,8 +122,7 @@ public sealed class EntityInventoryTrait : EntityTrait
 
         for (int slot = 0; slot < Container.GetSize(); slot++)
         {
-            ItemStack? item = Container.GetItem(slot);
-
+            IItemStack? item = Container.GetItem(slot);
             if (item is not null)
             {
                 clone.Container.SetItem(slot, item);
@@ -250,7 +132,7 @@ public sealed class EntityInventoryTrait : EntityTrait
         return clone;
     }
 
-    public void SyncToPlayer(Player player)
+    public void SyncToPlayer(IPlayer player)
     {
         if (!player.Spawned)
         {
@@ -267,16 +149,16 @@ public sealed class EntityInventoryTrait : EntityTrait
 
         for (int i = 0; i < Container.GetSize(); i++)
         {
-            packet.Content.Add(Container.GetItem(i)?.ToNetworkItemStackDescriptor() ?? new NetworkItemStackDescriptor());
+            packet.Content.Add(ItemNetwork.Describe(Container.GetItem(i)));
         }
 
-        player.Send(packet);
+        player.Send(new OpaqueOutboundPacket(packet));
     }
 
-    public void SyncHeldItemToClient(Player player)
+    public void SyncHeldItemToClient(IPlayer player)
     {
         byte hotBarSlot = SelectedSlot < 9 ? (byte)SelectedSlot : (byte)0;
-        ItemStack? held = GetHeldItem();
+        IItemStack? held = GetHeldItem();
 
         MobEquipmentPacket packet = new()
         {
@@ -284,15 +166,37 @@ public sealed class EntityInventoryTrait : EntityTrait
             InventorySlot = (byte)SelectedSlot,
             HotBarSlot = hotBarSlot,
             WindowId = 0,
-            NewItem = held?.ToNetworkItemStackDescriptor() ?? new NetworkItemStackDescriptor()
+            NewItem = ItemNetwork.Describe(held)
         };
 
-        player.Send(packet);
+        player.Send(new OpaqueOutboundPacket(packet));
     }
 }
 
+/// <summary>
+/// Builds a wire descriptor from an <see cref="IItemStack"/> without host helpers.
+/// Mirrors the minimal conversion in <c>Orion.Containers.Container</c>.
+/// </summary>
+internal static class ItemNetwork
+{
+    public static NetworkItemStackDescriptor Describe(IItemStack? item)
+    {
+        if (item is null || item.Type.NetworkId == 0 || item.Count == 0)
+        {
+            return new NetworkItemStackDescriptor();
+        }
 
-
-
-
-
+        return new NetworkItemStackDescriptor
+        {
+            NetworkId = item.Type.NetworkId,
+            Count = (ushort)item.Count,
+            Metadata = item.Metadata,
+            StackNetworkId = item.NetworkStackId,
+            BlockRuntimeId = 0,
+            Nbt = null,
+            CanPlaceOn = [],
+            CanDestroy = [],
+            BlockingTick = 0
+        };
+    }
+}

@@ -1,7 +1,5 @@
 name: Publish NuGet
 
-# Auto-publish when plugin sources change on main.
-# Version: optional override (must be > latest on nuget.org), else patch +0.0.1.
 on:
   push:
     branches: [main]
@@ -10,6 +8,7 @@ on:
       - "**/*.csproj"
       - "plugin.json"
       - "Directory.Build.props"
+      - "nuget.config"
   workflow_dispatch:
     inputs:
       version:
@@ -33,19 +32,12 @@ jobs:
         with:
           path: plugin
 
-      - name: Checkout OrionServerBE
+      - name: Checkout orion-containers (sibling)
         uses: actions/checkout@v4
         with:
-          repository: OrionBedrock/OrionServerBE
+          repository: OrionBedrock/orion-containers
           ref: main
-          path: OrionServerBE
-
-- name: Checkout orion:containers
-  uses: actions/checkout@v4
-  with:
-    repository: OrionBedrock/orion-containers
-    ref: main
-    path: orion:containers
+          path: orion:containers
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -53,13 +45,11 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Build
-        run: >
-          dotnet build OrionInventory.csproj -c Release
-          -p:OrionServerBERoot=$GITHUB_WORKSPACE/OrionServerBE
-          -p:PluginsSiblingRoot=$GITHUB_WORKSPACE
+        env:
+          PluginsSiblingRoot: ${{ github.workspace }}
+        run: dotnet build OrionInventory.csproj -c Release
 
   publish:
-    # Trusted Publishing + NUGET_USER exist only on OrionBedrock (not forks).
     if: github.repository_owner == 'OrionBedrock'
     needs: build
     runs-on: ubuntu-latest
@@ -72,19 +62,12 @@ jobs:
         with:
           path: plugin
 
-      - name: Checkout OrionServerBE
+      - name: Checkout orion-containers (sibling)
         uses: actions/checkout@v4
         with:
-          repository: OrionBedrock/OrionServerBE
+          repository: OrionBedrock/orion-containers
           ref: main
-          path: OrionServerBE
-
-- name: Checkout orion:containers
-  uses: actions/checkout@v4
-  with:
-    repository: OrionBedrock/orion-containers
-    ref: main
-    path: orion:containers
+          path: orion:containers
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -124,24 +107,20 @@ jobs:
               exit 1
             fi
             VER="$VERSION_OVERRIDE"
-            echo "Using override version: $VER"
           elif [ -z "$CURRENT" ]; then
             VER=$(grep -oP '(?<=<Version>)[^<]+' "$CSPROJ" | head -1)
-            echo "No nuget.org version; using csproj: $VER"
           else
             VER=$(bump_patch "$CURRENT")
-            echo "Auto-bump patch: $CURRENT -> $VER"
           fi
 
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "Resolved package version: $VER"
 
       - name: Pack
+        env:
+          PluginsSiblingRoot: ${{ github.workspace }}
         run: |
           mkdir -p ../artifacts/nuget
           dotnet pack OrionInventory.csproj -c Release -o ../artifacts/nuget \
-            -p:OrionServerBERoot=$GITHUB_WORKSPACE/OrionServerBE \
-            -p:PluginsSiblingRoot=$GITHUB_WORKSPACE \
             -p:Version=${{ steps.ver.outputs.version }} \
             -p:PackageVersion=${{ steps.ver.outputs.version }}
 

@@ -1,11 +1,8 @@
-using Orion;
-using Orion.Entity.Traits;
+using Orion.Api;
 using Orion.Gameplay;
 using Orion.PluginContracts;
 using Orion.PluginContracts.Network;
-using Orion.Plugins;
 using Orion.Protocol.Enums;
-using Orion.RakNet;
 using OrionInventory.Handlers;
 
 namespace OrionInventory;
@@ -18,8 +15,9 @@ public sealed class OrionInventoryPlugin : IOrionPlugin
 
     public void Load(IPluginLoadContext context)
     {
-        _ = context;
-        EntityTraitRegistry.RegisterFromAssembly(typeof(OrionInventoryPlugin).Assembly);
+        var assembly = typeof(OrionInventoryPlugin).Assembly;
+        context.Registries.EntityTraits.RegisterFromAssembly(assembly, Id);
+        context.Registries.PlayerTraits.RegisterFromAssembly(assembly, Id);
     }
 
     public void OnEnable(IPluginContext context)
@@ -39,53 +37,34 @@ public sealed class OrionInventoryPlugin : IOrionPlugin
 
     static void OwnItemStackRequest(PacketReceiveContext ctx)
     {
-        if (!TryGetServerConnection(ctx, out Server? server, out NetworkConnection? connection))
+        if (ctx.GetPlayer<IPlayer>() is not { } player)
         {
             return;
         }
 
-        ItemStackRequestHandler.Handle(server, connection, ctx.Payload.Span);
+        ItemStackRequestHandler.Handle(player, ctx.Payload.Span);
         ctx.Handled = true;
     }
 
     static void OwnContainerClose(PacketReceiveContext ctx)
     {
-        if (!TryGetServerConnection(ctx, out Server? server, out NetworkConnection? connection))
+        if (ctx.GetPlayer<IPlayer>() is not { } player)
         {
             return;
         }
 
-        ContainerCloseHandler.Handle(server, connection, ctx.Payload.Span);
+        ContainerCloseHandler.Handle(player, ctx.Payload.Span);
         ctx.Handled = true;
     }
 
     static void OwnMobEquipment(PacketReceiveContext ctx)
     {
-        if (!TryGetServerConnection(ctx, out Server? server, out NetworkConnection? connection))
+        if (ctx.GetPlayer<IPlayer>() is not { } player)
         {
             return;
         }
 
-        MobEquipmentHandler.Handle(server, connection, ctx.Payload.Span);
+        MobEquipmentHandler.Handle(player, ctx.Payload.Span);
         ctx.Handled = true;
-    }
-
-    static bool TryGetServerConnection(
-        PacketReceiveContext ctx,
-        out Server server,
-        out NetworkConnection connection)
-    {
-        server = null!;
-        connection = null!;
-        if (ctx.Connection.Native is not NetworkConnection native
-            || !PluginHost.TryGetServer(out Server? hostServer)
-            || hostServer is null)
-        {
-            return false;
-        }
-
-        connection = native;
-        server = hostServer;
-        return true;
     }
 }

@@ -1,40 +1,36 @@
 namespace OrionInventory;
 
+using Orion.Api;
+using Orion.Api.Items;
+using Orion.Api.Traits;
 using Orion.Containers;
-using Orion.Entity.Traits;
-using Orion.Entity.Traits.Types;
-using Orion.Protocol.Enums;
-using Orion.Protocol.Nbt;
-using Orion.Player;
 using OrionContainers;
+using Orion.Protocol.Nbt;
 
-using Entity = Orion.Entity.Entity;
-
-/// <summary>F
-/// This is a container where when u click on an item in an inventory and the item
-/// is on your mouse cursor
+/// <summary>
+/// The single-slot "cursor" container: the item held on the mouse while an
+/// inventory UI is open. Api-only player trait (no Orion.dll reference).
 /// </summary>
-public sealed class PlayerCursorTrait : PlayerTrait
+public sealed class PlayerCursorTrait : PlayerTraitBase
 {
     public new static string Identifier => "cursor";
-    public new static readonly EntityIdentifier[] Types = [EntityIdentifier.Player];
+    public static readonly string[] Types = ["minecraft:player"];
 
+    public IEntity Entity { get; }
     public EntityContainer Container { get; }
 
-    public PlayerCursorTrait(Entity entity) : base(entity)
+    public PlayerCursorTrait(IEntity entity)
     {
-        Container = new EntityContainer(Player, ContainerType.Inventory, 1)
+        Entity = entity ?? throw new ArgumentNullException(nameof(entity));
+        Container = new EntityContainer(entity, ContainerType.Inventory, 1)
         {
             Identifier = 124
         };
     }
 
-    public override void OnSpawn(EntitySpawnOptions details)
-    {
-        Container.Update();
-    }
+    public void OnSpawn() => Container.Update();
 
-    public override EntityTrait Clone(Entity entity)
+    public PlayerCursorTrait Clone(IEntity entity)
     {
         PlayerCursorTrait clone = new(entity);
         if (Container.GetItem(0) is { } item)
@@ -45,7 +41,7 @@ public sealed class PlayerCursorTrait : PlayerTrait
         return clone;
     }
 
-    public override void OnRead(CompoundTag tag)
+    public void OnRead(CompoundTag tag)
     {
         CompoundTag? containerTag = tag.Get<CompoundTag>("container");
         if (containerTag is null)
@@ -56,7 +52,7 @@ public sealed class PlayerCursorTrait : PlayerTrait
         Container.Deserialize(containerTag);
     }
 
-    public override void OnWrite(CompoundTag tag)
+    public void OnWrite(CompoundTag tag)
     {
         tag.Set("container", Container.Serialize());
     }

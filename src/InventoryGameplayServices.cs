@@ -1,29 +1,32 @@
+using Orion.Api;
+using Orion.Api.Items;
 using Orion.Containers;
+using OrionContainers;
 using Orion.Gameplay;
-using Orion.Item;
-using Orion.Player;
 using Orion.Protocol.Enums;
 using Orion.Protocol.Types;
 using OrionInventory.Handlers;
+using ApiContainer = Orion.Api.Containers.IContainer;
+using ProtoItemStackRequest = Orion.Protocol.Types.ItemStackRequest;
 
 namespace OrionInventory;
 
 sealed class InventoryAccess(EntityInventoryTrait trait) : IPlayerInventoryAccess
 {
-    public IContainer Container => trait.Container;
+    public ApiContainer Container => trait.Container;
     public int SelectedSlot => trait.SelectedSlot;
     public void SetHeldSlot(int slot) => trait.SetHeldItem(slot);
-    public ItemStack? GetHeldItem() => trait.GetHeldItem();
+    public IItemStack? GetHeldItem() => trait.GetHeldItem();
     public void Clear() => trait.Clear();
-    public void SyncToPlayer(Player player) => trait.SyncToPlayer(player);
-    public void SyncHeldItemToClient(Player player) => trait.SyncHeldItemToClient(player);
+    public void SyncToPlayer(IPlayer player) => trait.SyncToPlayer(player);
+    public void SyncHeldItemToClient(IPlayer player) => trait.SyncHeldItemToClient(player);
 }
 
 public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryService
 {
     public IPlayerInventoryService Inventory => this;
 
-    public bool TryOpenInventory(Player player)
+    public bool TryOpenInventory(IPlayer player)
     {
         EntityInventoryTrait? inventory = player.GetTrait<EntityInventoryTrait>();
         if (inventory is null)
@@ -35,7 +38,7 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
         return true;
     }
 
-    public bool TryCloseInventory(Player player, int windowId)
+    public bool TryCloseInventory(IPlayer player, int windowId)
     {
         EntityInventoryTrait? inventory = player.GetTrait<EntityInventoryTrait>();
         if (inventory is not null && windowId == (inventory.Container.Identifier ?? 0))
@@ -44,7 +47,7 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
             return true;
         }
 
-        if (player.TryGetOpenContainer(windowId, out IContainer? open) && open is not null)
+        if (player.TryGetOpenContainer(windowId, out ApiContainer? open) && open is not null)
         {
             open.RemoveViewer(player, false);
             return true;
@@ -53,7 +56,7 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
         return false;
     }
 
-    public bool TryGetAccess(Player player, out IPlayerInventoryAccess? access)
+    public bool TryGetAccess(IPlayer player, out IPlayerInventoryAccess? access)
     {
         EntityInventoryTrait? inventory = player.GetTrait<EntityInventoryTrait>();
         if (inventory is null)
@@ -66,10 +69,10 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
         return true;
     }
 
-    public ItemStack? GetHeldItem(Player player) =>
+    public IItemStack? GetHeldItem(IPlayer player) =>
         player.GetTrait<EntityInventoryTrait>()?.GetHeldItem();
 
-    public bool TrySetHeldSlot(Player player, int slot)
+    public bool TrySetHeldSlot(IPlayer player, int slot)
     {
         EntityInventoryTrait? inventory = player.GetTrait<EntityInventoryTrait>();
         if (inventory is null)
@@ -81,19 +84,19 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
         return true;
     }
 
-    public bool TryGive(Player player, ItemStack stack, out int leftover)
+    public bool TryGive(IPlayer player, IItemStack stack, out int leftover)
     {
-        leftover = stack.StackSize;
+        leftover = stack.Count;
         if (!TryGetAccess(player, out IPlayerInventoryAccess? access) || access is null)
         {
             return false;
         }
 
-        ItemStack remaining = stack.Clone();
+        IItemStack remaining = stack.Clone();
         if (!access.Container.AddItem(remaining))
         {
-            leftover = remaining.StackSize;
-            return leftover < stack.StackSize;
+            leftover = remaining.Count;
+            return leftover < stack.Count;
         }
 
         leftover = 0;
@@ -101,7 +104,7 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
         return true;
     }
 
-    public bool TryClear(Player player)
+    public bool TryClear(IPlayer player)
     {
         if (!TryGetAccess(player, out IPlayerInventoryAccess? access) || access is null)
         {
@@ -112,37 +115,38 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
         return true;
     }
 
-    public bool TryCollect(Player player, ItemStack item, out ushort moved)
+    public bool TryCollect(IPlayer player, IItemStack item, out ushort moved)
     {
         moved = 0;
         EntityInventoryTrait? inventory = player.GetTrait<EntityInventoryTrait>();
-        if (inventory is null || item.StackSize == 0)
+        if (inventory is null || item.Count == 0)
         {
             return false;
         }
 
         Container container = inventory.Container;
-        ushort remaining = item.StackSize;
+        int remaining = item.Count;
+        int movedCount = 0;
 
         for (int i = 0; i < container.GetSize() && remaining > 0; i++)
         {
-            ItemStack? existing = container.GetItem(i);
-            if (existing is null || !existing.CanStackWith(item) || existing.StackSize >= existing.Type.MaxStackSize)
+            IItemStack? existing = container.GetItem(i);
+            if (existing is null || !existing.CanStackWith(item) || existing.Count >= existing.Type.MaxStackSize)
             {
                 continue;
             }
 
-            int space = existing.Type.MaxStackSize - existing.StackSize;
+            int space = existing.Type.MaxStackSize - existing.Count;
             int transfer = Math.Min(space, remaining);
             if (transfer <= 0)
             {
                 continue;
             }
 
-            existing.IncrementStack((ushort)transfer);
+            existing.Increment(transfer);
             container.UpdateSlot(i);
-            remaining = (ushort)(remaining - transfer);
-            moved = (ushort)(moved + transfer);
+            remaining -= transfer;
+            movedCount += transfer;
         }
 
         for (int i = 0; i < container.GetSize() && remaining > 0; i++)
@@ -152,24 +156,25 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
                 continue;
             }
 
-            ushort transfer = (ushort)Math.Min(remaining, item.Type.MaxStackSize);
-            ItemStack stack = item.Clone(transfer);
+            int transfer = Math.Min(remaining, item.Type.MaxStackSize);
+            IItemStack stack = item.Clone(transfer);
             container.SetItem(i, stack);
-            remaining = (ushort)(remaining - transfer);
-            moved = (ushort)(moved + transfer);
+            remaining -= transfer;
+            movedCount += transfer;
         }
 
-        if (moved == 0)
+        if (movedCount == 0)
         {
             return false;
         }
 
-        item.SetStackSize(remaining);
+        item.SetCount(remaining);
         inventory.SyncToPlayer(player);
+        moved = (ushort)movedCount;
         return true;
     }
 
-    public bool TrySyncToClient(Player player)
+    public bool TrySyncToClient(IPlayer player)
     {
         if (!player.Spawned || !TryGetAccess(player, out IPlayerInventoryAccess? access) || access is null)
         {
@@ -182,88 +187,47 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
         return true;
     }
 
-    public void EnableHud(Player player)
+    public void EnableHud(IPlayer player)
     {
         if (player.GetTrait<EntityInventoryTrait>() is null)
         {
             return;
         }
 
-        player.SetHud(HudVisibility.Reset, HudElement.HotBar);
+        player.SetHud(Orion.Api.HudVisibility.Reset, Orion.Api.HudElement.HotBar);
     }
 
-    public IContainer? ResolveContainer(Player player, FullContainerName name)
+    public ApiContainer? ResolveContainer(IPlayer player, ContainerNameWire name)
     {
-        EntityInventoryTrait? inventory = player.GetTrait<EntityInventoryTrait>();
-        if (inventory is null)
+        if (name.Value is not FullContainerName fullName)
         {
             return null;
         }
 
-        if (name.ContainerId is (byte)ContainerId.Armor or 12
-            or (byte)ContainerId.Inventory or (byte)ContainerId.Hotbar
-            or (byte)ContainerId.FixedInventory or (byte)ContainerId.Offhand)
-        {
-            return inventory.Container;
-        }
-
-        if (name.ContainerId is (byte)ContainerId.Cursor or (byte)ContainerId.CreatedOutput
-            or (byte)ContainerName.Cursor or (byte)ContainerName.CreativeOutput)
-        {
-            return player.GetTrait<PlayerCursorTrait>()?.Container;
-        }
-
-        if (name.ContainerId == (byte)ContainerId.Barrel || name.ContainerId == (byte)ContainerId.InventoryUi
-            || name.ContainerId == (byte)ContainerName.Barrel || name.ContainerId == (byte)ContainerName.Container)
-        {
-            if (name.DynamicContainerId.HasValue &&
-                player.TryGetOpenContainer((int)name.DynamicContainerId.Value!, out IContainer? containerById))
-            {
-                return containerById;
-            }
-
-            foreach ((int _, IContainer candidate) in player.openedContainers)
-            {
-                if (candidate.Type != ContainerType.Inventory)
-                {
-                    return candidate;
-                }
-            }
-
-            return inventory.Container;
-        }
-
-        ContainerName containerName = (ContainerName)name.ContainerId;
-        switch (containerName)
-        {
-            case ContainerName.HotbarAndInventory:
-            case ContainerName.Hotbar:
-            case ContainerName.Inventory:
-            case ContainerName.Armor:
-            case ContainerName.Offhand:
-                return inventory.Container;
-
-            case ContainerName.Cursor:
-            case ContainerName.CreativeOutput:
-                return player.GetTrait<PlayerCursorTrait>()?.Container;
-        }
-
-        if (name.DynamicContainerId.HasValue &&
-            player.TryGetOpenContainer((int)name.DynamicContainerId.Value!, out IContainer? container))
-        {
-            return container;
-        }
-
-        return null;
+        return InventoryResolver.Resolve(player, fullName);
     }
 
-    public bool TryProcessItemStackRequest(Player player, ItemStackRequest request, out ItemStackResponse response)
+    public bool TryProcessItemStackRequest(
+        IPlayer player,
+        ItemStackRequestWire request,
+        out ItemStackResponseWire response)
     {
-        response = ItemStackRequestHandler.Process(player, request);
+        if (request.Value is not ProtoItemStackRequest protocolRequest)
+        {
+            response = new ItemStackResponseWire(new ItemStackResponse
+            {
+                RequestId = 0,
+                Status = ItemStackResponseStatus.Error
+            });
+            return false;
+        }
+
+        ItemStackResponse protocolResponse = ItemStackRequestHandler.Process(player, protocolRequest);
+        response = new ItemStackResponseWire(protocolResponse);
         return true;
     }
 
-    static void EnsureContainerViewer(Player player, IContainer container, int windowId)
+    static void EnsureContainerViewer(IPlayer player, ApiContainer container, int windowId)
     {
         if (container is not Container concrete)
         {
@@ -278,5 +242,79 @@ public sealed class InventoryGameplayServices : IInventoryApi, IPlayerInventoryS
 
         concrete.occupants[player] = windowId;
         player.RegisterOpenContainer(windowId, concrete);
+    }
+}
+
+/// <summary>
+/// Resolves a client <see cref="FullContainerName"/> to a concrete plugin container,
+/// using the player's inventory/cursor traits and any opened dynamic containers.
+/// </summary>
+internal static class InventoryResolver
+{
+    public static Container? Resolve(IPlayer player, FullContainerName fullName)
+    {
+        EntityInventoryTrait? inventory = player.GetTrait<EntityInventoryTrait>();
+        if (inventory is null)
+        {
+            return null;
+        }
+
+        if (fullName.ContainerId is (byte)ContainerId.Armor or 12
+            or (byte)ContainerId.Inventory or (byte)ContainerId.Hotbar
+            or (byte)ContainerId.FixedInventory or (byte)ContainerId.Offhand)
+        {
+            return inventory.Container;
+        }
+
+        if (fullName.ContainerId is (byte)ContainerId.Cursor or (byte)ContainerId.CreatedOutput
+            or (byte)ContainerName.Cursor or (byte)ContainerName.CreativeOutput)
+        {
+            return player.GetTrait<PlayerCursorTrait>()?.Container;
+        }
+
+        if (fullName.ContainerId == (byte)ContainerId.Barrel || fullName.ContainerId == (byte)ContainerId.InventoryUi
+            || fullName.ContainerId == (byte)ContainerName.Barrel || fullName.ContainerId == (byte)ContainerName.Container)
+        {
+            if (fullName.DynamicContainerId.HasValue &&
+                player.TryGetOpenContainer((int)fullName.DynamicContainerId.Value, out ApiContainer? containerById)
+                && containerById is Container apiById)
+            {
+                return apiById;
+            }
+
+            foreach ((int _, ApiContainer candidate) in player.OpenedContainers)
+            {
+                if (candidate is Container concreteCandidate && concreteCandidate.Type != ContainerType.Inventory)
+                {
+                    return concreteCandidate;
+                }
+            }
+
+            return inventory.Container;
+        }
+
+        ContainerName containerName = (ContainerName)fullName.ContainerId;
+        switch (containerName)
+        {
+            case ContainerName.HotbarAndInventory:
+            case ContainerName.Hotbar:
+            case ContainerName.Inventory:
+            case ContainerName.Armor:
+            case ContainerName.Offhand:
+                return inventory.Container;
+
+            case ContainerName.Cursor:
+            case ContainerName.CreativeOutput:
+                return player.GetTrait<PlayerCursorTrait>()?.Container;
+        }
+
+        if (fullName.DynamicContainerId.HasValue &&
+            player.TryGetOpenContainer((int)fullName.DynamicContainerId.Value, out ApiContainer? container)
+            && container is Container api)
+        {
+            return api;
+        }
+
+        return null;
     }
 }
